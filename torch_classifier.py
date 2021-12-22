@@ -1,6 +1,7 @@
 import torch
 import torchvision
 import torchvision.transforms as transforms
+from torch.utils.data import DataLoader, random_split
 
 
 # for normalization 
@@ -18,6 +19,28 @@ test_dataset_transformed = transforms.Compose([
     transforms.Normalize(*statistics, inplace=True) # the data will be between -1,1 with normalization operation data=(data*mean)/STD_DEV  
 ])
 
-dataset = torchvision.datasets.CIFAR10(root='/data', download=True, transform=dataset_transformed)
-test_dataset = torchvision.datasets.CIFAR10(root='/data', download=True, train=False,transform=test_dataset_transformed)
+dataset = torchvision.datasets.CIFAR10(root='/Users/halim/ai/PersonalProjects/pytorch_learn/data', download=True, transform=dataset_transformed)
+test_dataset = torchvision.datasets.CIFAR10(root='/Users/halim/ai/PersonalProjects/pytorch_learn/data', download=True, train=False,transform=test_dataset_transformed)
 
+val_ratio = 0.2
+batch_size = 32
+# Add the: pin_memory=True parameter to the train_dl and test_dl to copy the data into GPU memory for faster data load
+train_dataset, validation_dataset = random_split(dataset=dataset, lengths=[int((1-val_ratio) * len(dataset)), int(val_ratio * len(dataset))])
+train_dl = DataLoader(dataset=train_dataset,batch_size=batch_size, shuffle=True)
+validation_dl = DataLoader(dataset=validation_dataset,batch_size=batch_size, shuffle=True)
+test_dl = DataLoader(dataset=test_dataset,batch_size=batch_size, pin_memory=True)
+
+def denormalize(images, means, std_devs):
+  means = torch.tensor(means).reshape(1,3,1,1)
+  std_devs = torch.tensor(std_devs).reshape(1,3,1,1)
+  return images * std_devs + means
+
+def show_batch(dl):
+  import matplotlib.pyplot as plt
+  from torchvision.utils import make_grid
+  for images, labels in dl:
+    fig, ax = plt.subplots(figsize=(10,10))
+    images = denormalize(images, *statistics)
+    ax.imshow(make_grid(images, 10).permute(1,2,0)) #HWC
+    break
+show_batch(train_dl)
