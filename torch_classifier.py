@@ -44,3 +44,30 @@ def show_batch(dl):
     ax.imshow(make_grid(images, 10).permute(1,2,0)) #HWC
     break
 show_batch(train_dl)
+
+def get_device():
+  return torch.device('cuda') if torch.cuda.is_available else torch.device('cpu')
+
+def to_device(entity, device):
+  if isinstance(entity, (list, tuple)):
+    return [to_device((elem,device) for elem in entity)]
+  return entity.to(device, non_blocking= True)
+
+class DeviceDataLoader():
+  """Wrapper around dataloader to transfer batches to specified device"""
+  def __init__(self, dataloader, device):
+      self.dl = dataloader
+      self.device = device
+
+  def __iter__(self):
+    for b in self.dl:
+      yield to_device(b, self.device)
+
+  def __len__(self):
+    return len(self.dl)
+
+device = get_device()
+train_dl = DeviceDataLoader(train_dl, device)
+train_dl = DeviceDataLoader(validation_dl, device)
+train_dl = DeviceDataLoader(test_dl, device)
+
