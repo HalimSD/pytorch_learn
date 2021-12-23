@@ -107,3 +107,48 @@ class NetModel(nn.Module):
      out = self.conv4(out)
      out = self.res2(out) + out
      return self.classifier(out)
+
+def accuracy(logits, labels):
+  pred, predClassId = torch.max(logits, dim=1) # logits have dim: B*N
+  return torch.tensor(torch.sum(predClassId == labels).item / len(logits))
+
+
+def train(model, train_dl, validation_dl, epochs, max_lr, loss_func, optim):
+  optimizer = optim(model.parameters(), max_lr)
+  schedular = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr, epochs * len(train_dl))
+
+  results = []
+  for epoch in range(epochs):
+    model.train()
+    train_losses = []
+    lrs = []
+    for images , labels in train_dl:
+      logits = model(images)
+      loss = loss_func(logits, labels)
+      train_losses.append(loss)
+      loss.backward()
+      optimizer.step()
+      optimizer.zero_grad()
+      lrs.append(optimizer.param_groups[0]['lr'])
+      schedular.step()
+    epoch_train_loss = torch.stack(train_losses).mean()
+
+    batch_losses, batch_accs = [], []
+    model.eval()
+    for images , labels in train_dl:
+      with torch.no_grad():
+        logits = model(images)
+      batch_losses.append(loss = loss_func(logits, labels))
+      batch_accs.append(accuracy(logits,labels))
+    epoch_avg_loss = torch.stack(batch_losses).mean()
+    epoch_avg_acc = torch.stack(batch_accs).mean()
+    results.append({'avg_loss ' : epoch_avg_loss, 'avg_acc ' : epoch_avg_acc, 'avg_train_loss ': epoch_train_loss, 'lr ': lrs})
+  return results
+
+model = NetModel(3,10)
+# model = to_device(model, device)
+epochs = 10
+max_lr = 1e-2
+loss_func = nn.functional.cross_entropy
+optim = torch.optim.Adam
+results = train(model, train_dl, validation_dl, epochs, max_lr, loss_func, optim)
