@@ -46,12 +46,17 @@ def show_batch(dl):
 show_batch(train_dl)
 
 def get_device():
-  return torch.device('cuda') if torch.cuda.is_available else torch.device('cpu')
+  if torch.cuda.is_available:
+    return torch.device('cuda') 
+  else: 
+    return torch.device('cpu')
 
 def to_device(entity, device):
   if isinstance(entity, (list, tuple)):
-    return [to_device((elem,device) for elem in entity)]
-  return entity.to(device, non_blocking= True)
+    for elem in entity:
+      return to_device(elem,device) 
+  else:
+    return entity.to(device, non_blocking= True)
 
 class DeviceDataLoader():
   """Wrapper around dataloader to transfer batches to specified device"""
@@ -112,6 +117,17 @@ def accuracy(logits, labels):
   pred, predClassId = torch.max(logits, dim=1) # logits have dim: B*N
   return torch.tensor(torch.sum(predClassId == labels).item / len(logits))
 
+def evaluate(model, dl):
+  batch_losses, batch_accs = [], []
+  for images , labels in validation_dl:
+      with torch.no_grad():
+        logits = model(images)
+      batch_losses.append(loss = loss_func(logits, labels))
+      batch_accs.append(accuracy(logits,labels))
+  epoch_avg_loss = torch.stack(batch_losses).mean().item()
+  epoch_avg_acc = torch.stack(batch_accs).mean()
+
+
 
 def train(model, train_dl, validation_dl, epochs, max_lr, loss_func, optim):
   optimizer = optim(model.parameters(), max_lr)
@@ -131,19 +147,11 @@ def train(model, train_dl, validation_dl, epochs, max_lr, loss_func, optim):
       optimizer.zero_grad()
       lrs.append(optimizer.param_groups[0]['lr'])
       schedular.step()
-    epoch_train_loss = torch.stack(train_losses).mean()
-
-    batch_losses, batch_accs = [], []
-    model.eval()
-    for images , labels in train_dl:
-      with torch.no_grad():
-        logits = model(images)
-      batch_losses.append(loss = loss_func(logits, labels))
-      batch_accs.append(accuracy(logits,labels))
-    epoch_avg_loss = torch.stack(batch_losses).mean()
-    epoch_avg_acc = torch.stack(batch_accs).mean()
-    results.append({'avg_loss ' : epoch_avg_loss, 'avg_acc ' : epoch_avg_acc, 'avg_train_loss ': epoch_train_loss, 'lr ': lrs})
+    epoch_train_loss = torch.stack(train_losses).mean().item()
+    epoch_avg_loss, epoch_avg_acc = evaluate(model, validation_dl, loss_func)
+    results.append({'avg_valid_loss ' : epoch_avg_loss, 'avg_valid_acc ' : epoch_avg_acc, 'avg_train_loss ': epoch_train_loss, 'lr ': lrs})
   return results
+
 
 model = NetModel(3,10)
 # model = to_device(model, device)
@@ -152,3 +160,6 @@ max_lr = 1e-2
 loss_func = nn.functional.cross_entropy
 optim = torch.optim.Adam
 results = train(model, train_dl, validation_dl, epochs, max_lr, loss_func, optim)
+
+for result in results:
+  print(result["avg_valid_acc"])
