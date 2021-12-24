@@ -46,17 +46,17 @@ def show_batch(dl):
 show_batch(train_dl)
 
 def get_device():
-  if torch.cuda.is_available:
-    return torch.device('cuda') 
+  if torch.cuda.is_available():
+    return torch.device('cuda:0') 
   else: 
     return torch.device('cpu')
 
+
 def to_device(entity, device):
   if isinstance(entity, (list, tuple)):
-    for elem in entity:
-      return to_device(elem,device) 
-  else:
-    return entity.to(device, non_blocking= True)
+    return [to_device(elem, device) for elem in entity]
+  return entity.to(device, non_blocking= True)
+
 
 class DeviceDataLoader():
   """Wrapper around dataloader to transfer batches to specified device"""
@@ -95,7 +95,7 @@ class NetModel(nn.Module):
       self.conv2 = conv_block(64, 128, pool=True)
       self.res1 = nn.Sequential(OrderedDict([('Conv1net',conv_block(128,128)), ('Conv2net',conv_block(128,128))]))
 
-      self.conv3 = conv_block(128, 256)
+      self.conv3 = conv_block(128, 256, pool=True)
       self.conv4 = conv_block(256, 512, pool=True)
       self.res2 = nn.Sequential(conv_block(512,512), conv_block(512,512))
 
@@ -111,23 +111,23 @@ class NetModel(nn.Module):
      out = self.conv3(out)
      out = self.conv4(out)
      out = self.res2(out) + out
-     return self.classifier(out)
+     out = self.classifier(out)
+     return out
 
 def accuracy(logits, labels):
   pred, predClassId = torch.max(logits, dim=1) # logits have dim: B*N
-  return torch.tensor(torch.sum(predClassId == labels).item / len(logits))
+  return torch.tensor(torch.sum(predClassId == labels).item() / len(logits))
 
-def evaluate(model, dl):
+def evaluate(model, dl, loss_func):
   batch_losses, batch_accs = [], []
   for images , labels in validation_dl:
       with torch.no_grad():
         logits = model(images)
-      batch_losses.append(loss = loss_func(logits, labels))
+      batch_losses.append(loss_func(logits, labels))
       batch_accs.append(accuracy(logits,labels))
   epoch_avg_loss = torch.stack(batch_losses).mean().item()
   epoch_avg_acc = torch.stack(batch_accs).mean()
-
-
+  return epoch_avg_loss, epoch_avg_acc
 
 def train(model, train_dl, validation_dl, epochs, max_lr, loss_func, optim):
   optimizer = optim(model.parameters(), max_lr)
@@ -149,13 +149,14 @@ def train(model, train_dl, validation_dl, epochs, max_lr, loss_func, optim):
       schedular.step()
     epoch_train_loss = torch.stack(train_losses).mean().item()
     epoch_avg_loss, epoch_avg_acc = evaluate(model, validation_dl, loss_func)
-    results.append({'avg_valid_loss ' : epoch_avg_loss, 'avg_valid_acc ' : epoch_avg_acc, 'avg_train_loss ': epoch_train_loss, 'lr ': lrs})
+    results.append({'avg_valid_loss' : epoch_avg_loss*100, 'avg_valid_acc' : epoch_avg_acc*100, 'avg_train_loss': epoch_train_loss*100, 'lr': lrs})
   return results
+
 
 
 model = NetModel(3,10)
 # model = to_device(model, device)
-epochs = 10
+epochs = 4
 max_lr = 1e-2
 loss_func = nn.functional.cross_entropy
 optim = torch.optim.Adam
